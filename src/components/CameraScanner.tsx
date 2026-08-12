@@ -138,30 +138,39 @@ export const CameraScanner: React.FC<CameraScannerProps> = ({ onScanResult }) =>
   };
 
   return (
-    <div className="w-full max-w-lg mx-auto bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-2xl space-y-0 relative">
+    <div className="w-full max-w-lg mx-auto bg-slate-900/90 border border-slate-800 rounded-3xl overflow-hidden shadow-2xl space-y-0 relative backdrop-blur-md">
       {/* Video Viewport Header */}
-      <div className="flex items-center justify-between p-4 bg-slate-950/80 border-b border-slate-800">
-        <div className="flex items-center gap-2">
-          <Scan className="w-5 h-5 text-blue-400 animate-pulse" />
-          <h2 className="font-semibold text-sm text-slate-200">Point Camera at Teltonika RUT901 Label</h2>
+      <div className="flex items-center justify-between px-4 py-3.5 bg-slate-950/80 border-b border-slate-800/80">
+        <div className="flex items-center gap-2.5">
+          <div className="p-1.5 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-400">
+            <Scan className="w-4 h-4 animate-pulse" />
+          </div>
+          <div>
+            <h2 className="font-semibold text-xs sm:text-sm text-slate-200">Scan RUT901 Label</h2>
+            <p className="text-[10px] text-slate-400">Position 1D barcode inside box</p>
+          </div>
         </div>
 
         <div className="flex items-center gap-2">
           {videoDevices.length > 1 && (
             <button
               onClick={switchCamera}
-              className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors"
+              className="p-2.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 active:bg-slate-600 text-slate-300 transition-all min-w-[44px] min-h-[44px] flex items-center justify-center cursor-pointer"
               title="Switch Camera"
+              aria-label="Switch Camera"
             >
               <RefreshCw className="w-4 h-4" />
             </button>
           )}
           <button
             onClick={toggleTorch}
-            className={`p-2 rounded-lg transition-colors ${
-              torchOn ? 'bg-amber-500 text-slate-950' : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
+            className={`p-2.5 rounded-xl transition-all min-w-[44px] min-h-[44px] flex items-center justify-center cursor-pointer ${
+              torchOn
+                ? 'bg-amber-400 text-slate-950 shadow-[0_0_15px_rgba(251,191,36,0.5)] font-bold'
+                : 'bg-slate-800/80 hover:bg-slate-700 active:bg-slate-600 text-slate-300'
             }`}
             title="Toggle Flashlight"
+            aria-label="Toggle Flashlight"
           >
             <Zap className="w-4 h-4" />
           </button>
@@ -178,19 +187,19 @@ export const CameraScanner: React.FC<CameraScannerProps> = ({ onScanResult }) =>
         />
 
         {/* Viewfinder Target Overlay */}
-        <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-center p-8">
-          <div className="w-64 h-44 sm:w-80 sm:h-52 border-2 border-blue-500/80 rounded-2xl relative shadow-[0_0_40px_rgba(59,130,246,0.3)] bg-blue-500/5 flex flex-col justify-between p-3">
+        <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-center p-6">
+          <div className="w-64 h-44 sm:w-80 sm:h-52 border-2 border-blue-500/70 rounded-2xl relative shadow-[0_0_50px_rgba(59,130,246,0.25)] bg-blue-500/5 flex flex-col justify-between p-3 overflow-hidden">
             {/* Target Corners */}
-            <div className="absolute -top-1 -left-1 w-6 h-6 border-t-4 border-l-4 border-blue-400 rounded-tl-lg" />
-            <div className="absolute -top-1 -right-1 w-6 h-6 border-t-4 border-r-4 border-blue-400 rounded-tr-lg" />
-            <div className="absolute -bottom-1 -left-1 w-6 h-6 border-b-4 border-l-4 border-blue-400 rounded-bl-lg" />
-            <div className="absolute -bottom-1 -right-1 w-6 h-6 border-b-4 border-r-4 border-blue-400 rounded-br-lg" />
+            <div className="absolute -top-0.5 -left-0.5 w-7 h-7 border-t-4 border-l-4 border-blue-400 rounded-tl-xl shadow-sm" />
+            <div className="absolute -top-0.5 -right-0.5 w-7 h-7 border-t-4 border-r-4 border-blue-400 rounded-tr-xl shadow-sm" />
+            <div className="absolute -bottom-0.5 -left-0.5 w-7 h-7 border-b-4 border-l-4 border-blue-400 rounded-bl-xl shadow-sm" />
+            <div className="absolute -bottom-0.5 -right-0.5 w-7 h-7 border-b-4 border-r-4 border-blue-400 rounded-br-xl shadow-sm" />
 
             {/* Scanning Laser Line Animation */}
-            <div className="w-full h-0.5 bg-gradient-to-r from-transparent via-blue-400 to-transparent shadow-[0_0_12px_#60a5fa] animate-bounce my-auto" />
-            
-            <div className="text-center">
-              <span className="text-[11px] font-medium tracking-wide bg-slate-950/80 px-2.5 py-1 rounded-full text-blue-300 border border-blue-500/30">
+            <div className="animate-laser w-full h-0.5 bg-gradient-to-r from-transparent via-blue-400 to-transparent shadow-[0_0_15px_#60a5fa]" />
+
+            <div className="text-center mt-auto">
+              <span className="text-[10px] font-semibold tracking-wider uppercase bg-slate-950/85 px-3 py-1 rounded-full text-blue-300 border border-blue-500/30 backdrop-blur-sm">
                 ALIGN PASS / BARCODE HERE
               </span>
             </div>
@@ -199,7 +208,7 @@ export const CameraScanner: React.FC<CameraScannerProps> = ({ onScanResult }) =>
 
         {/* Error Alert */}
         {error && (
-          <div className="absolute inset-x-4 top-4 p-3 bg-red-950/90 border border-red-700/80 rounded-xl text-red-200 text-xs flex items-center gap-2 shadow-lg backdrop-blur">
+          <div className="absolute inset-x-4 top-4 p-3 bg-red-950/90 border border-red-700/80 rounded-xl text-red-200 text-xs flex items-center gap-2.5 shadow-xl backdrop-blur-md animate-in fade-in slide-in-from-top-2">
             <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
             <span>{error}</span>
           </div>
@@ -207,10 +216,10 @@ export const CameraScanner: React.FC<CameraScannerProps> = ({ onScanResult }) =>
       </div>
 
       {/* Footer Info */}
-      <div className="p-3 bg-slate-950/90 text-center border-t border-slate-800">
-        <p className="text-xs text-slate-400 flex items-center justify-center gap-1.5">
+      <div className="p-3 bg-slate-950/90 text-center border-t border-slate-800/80">
+        <p className="text-[11px] text-slate-400 flex items-center justify-center gap-1.5">
           <Camera className="w-3.5 h-3.5 text-slate-500" />
-          Scans 1D Barcodes & Password Text automatically
+          Scans 1D Barcodes & Password text automatically
         </p>
       </div>
     </div>

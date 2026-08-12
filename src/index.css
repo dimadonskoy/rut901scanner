@@ -1,9 +1,31 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 @import "tailwindcss";
 
 @layer base {
   body {
     background-color: #0f172a;
     color: #f8fafc;
-    font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    -webkit-tap-highlight-color: transparent;
   }
 }
+
+/* Custom laser animation */
+@keyframes laser-scan {
+  0%, 100% {
+    top: 10%;
+    opacity: 0.4;
+  }
+  50% {
+    top: 90%;
+    opacity: 1;
+  }
+}
+
+.animate-laser {
+  position: absolute;
+  left: 0;
+  right: 0;
+  animation: laser-scan 2.2s ease-in-out infinite;
+}
+

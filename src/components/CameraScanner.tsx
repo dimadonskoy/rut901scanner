@@ -14,27 +14,48 @@ export const CameraScanner: React.FC<CameraScannerProps> = ({ onScanResult }) =>
   const [torchOn, setTorchOn] = useState<boolean>(false);
   const codeReaderRef = useRef<BrowserMultiFormatReader | null>(null);
 
-  // Initialize Code Reader and enumerate cameras
+  // Initialize Code Reader and request camera permissions explicitly
   useEffect(() => {
     const codeReader = new BrowserMultiFormatReader();
     codeReaderRef.current = codeReader;
 
-    codeReader
-      .listVideoInputDevices()
-      .then((devices) => {
+    async function initCamera() {
+      // Check for Secure Context (HTTPS or localhost) - iOS Safari strict requirement
+      if (!window.isSecureContext && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+        setError('Camera requires HTTPS on iOS. Please access via localhost or a secure HTTPS connection.');
+        return;
+      }
+
+      try {
+        // Request permissions first to trigger browser security prompt
+        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+        // Stop initial temporary stream after obtaining permissions
+        stream.getTracks().forEach((track) => track.stop());
+
+        // Now enumerate devices (labels will be populated once permitted)
+        const devices = await codeReader.listVideoInputDevices();
         setVideoDevices(devices);
+
         if (devices.length > 0) {
-          // Default to back/environment camera if present
+          // Default to environment/back camera (iOS rear camera)
           const backCamera = devices.find((device) =>
-            /back|environment|rear|main/i.test(device.label)
+            /back|environment|rear|main|0/i.test(device.label)
           );
           setSelectedDeviceId(backCamera ? backCamera.deviceId : devices[0].deviceId);
         }
-      })
-      .catch((err) => {
-        console.error('Camera enumeration error:', err);
-        setError('Unable to access camera hardware. Please check permissions.');
-      });
+      } catch (err: any) {
+        console.error('Camera access error:', err);
+        if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+          setError('Camera permission was denied. Please allow camera access in iOS Settings > Safari / Browser Settings.');
+        } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+          setError('No camera detected on this device.');
+        } else {
+          setError('Unable to access camera. Ensure you are using HTTPS or localhost.');
+        }
+      }
+    }
+
+    initCamera();
 
     return () => {
       codeReader.reset();

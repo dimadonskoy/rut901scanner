@@ -16,6 +16,7 @@ export const CameraScanner: React.FC<CameraScannerProps> = ({ onScanResult }) =>
   const [torchOn, setTorchOn] = useState<boolean>(false);
   const codeReaderRef = useRef<BrowserMultiFormatReader | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const viewfinderRef = useRef<HTMLDivElement | null>(null);
   const [capturing, setCapturing] = useState<boolean>(false);
   const [ocrError, setOcrError] = useState<string | null>(null);
   const [lastRawText, setLastRawText] = useState<string | null>(null);
@@ -81,7 +82,74 @@ export const CameraScanner: React.FC<CameraScannerProps> = ({ onScanResult }) =>
     }
   }, [onScanResult]);
 
-  // Capture the current video frame and run OCR to read the printed PASSWORD field.
+  // Map the on-screen viewfinder box to source-video pixel coordinates,
+  // accounting for the video element's object-cover scaling/cropping.
+  const getViewfinderCropRect = (video: HTMLVideoElement) => {
+    const box = viewfinderRef.current;
+    if (!box) return null;
+
+    const vRect = video.getBoundingClientRect();
+    const bRect = box.getBoundingClientRect();
+    if (vRect.width === 0 || vRect.height === 0) return null;
+
+    const scale = Math.max(vRect.width / video.videoWidth, vRect.height / video.videoHeight);
+    const offsetX = (video.videoWidth * scale - vRect.width) / 2;
+    const offsetY = (video.videoHeight * scale - vRect.height) / 2;
+
+    // Pad the crop ~12% so slightly misaligned labels still fit.
+    const padX = bRect.width * 0.12;
+    const padY = bRect.height * 0.12;
+
+    const sx = (bRect.left - vRect.left - padX + offsetX) / scale;
+    const sy = (bRect.top - vRect.top - padY + offsetY) / scale;
+    const sw = (bRect.width + padX * 2) / scale;
+    const sh = (bRect.height + padY * 2) / scale;
+
+    return {
+      sx: Math.max(0, sx),
+      sy: Math.max(0, sy),
+      sw: Math.min(sw, video.videoWidth - Math.max(0, sx)),
+      sh: Math.min(sh, video.videoHeight - Math.max(0, sy)),
+    };
+  };
+
+  // Grayscale the frame, invert it when the background is dark (labels print
+  // white-on-black, but Tesseract expects dark-on-light), and stretch contrast.
+  const preprocessForOcr = (ctx: CanvasRenderingContext2D, width: number, height: number) => {
+    const imageData = ctx.getImageData(0, 0, width, height);
+    const px = imageData.data;
+
+    let sum = 0;
+    const gray = new Uint8ClampedArray(px.length / 4);
+    for (let i = 0; i < gray.length; i++) {
+      const g = 0.299 * px[i * 4] + 0.587 * px[i * 4 + 1] + 0.114 * px[i * 4 + 2];
+      gray[i] = g;
+      sum += g;
+    }
+
+    const invert = sum / gray.length < 128;
+
+    let min = 255;
+    let max = 0;
+    for (let i = 0; i < gray.length; i++) {
+      if (invert) gray[i] = 255 - gray[i];
+      if (gray[i] < min) min = gray[i];
+      if (gray[i] > max) max = gray[i];
+    }
+
+    const range = Math.max(1, max - min);
+    for (let i = 0; i < gray.length; i++) {
+      const v = ((gray[i] - min) / range) * 255;
+      px[i * 4] = v;
+      px[i * 4 + 1] = v;
+      px[i * 4 + 2] = v;
+    }
+
+    ctx.putImageData(imageData, 0, 0);
+  };
+
+  // Capture the viewfinder region of the video frame and run OCR to read the
+  // printed PASSWORD field.
   const captureAndRecognizePassword = async () => {
     if (!videoRef.current || !canvasRef.current) return;
 
@@ -96,12 +164,24 @@ export const CameraScanner: React.FC<CameraScannerProps> = ({ onScanResult }) =>
 
     try {
       const canvas = canvasRef.current;
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-
-      const ctx = canvas.getContext('2d');
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
       if (!ctx) throw new Error('Canvas 2D context unavailable');
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+      const crop = getViewfinderCropRect(video);
+      const sx = crop ? crop.sx : 0;
+      const sy = crop ? crop.sy : 0;
+      const sw = crop ? crop.sw : video.videoWidth;
+      const sh = crop ? crop.sh : video.videoHeight;
+
+      // Upscale small crops so label glyphs are large enough for Tesseract.
+      const upscale = Math.min(3, Math.max(1, 1400 / sw));
+      canvas.width = Math.round(sw * upscale);
+      canvas.height = Math.round(sh * upscale);
+
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(video, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
+      preprocessForOcr(ctx, canvas.width, canvas.height);
 
       const { data } = await recognize(canvas, 'eng');
       const password = extractPasswordField(data.text);
@@ -237,7 +317,7 @@ export const CameraScanner: React.FC<CameraScannerProps> = ({ onScanResult }) =>
 
         {/* Viewfinder Target Overlay */}
         <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-center p-6">
-          <div className="w-64 h-44 sm:w-80 sm:h-52 border-2 border-blue-500/70 rounded-2xl relative shadow-[0_0_50px_rgba(59,130,246,0.25)] bg-blue-500/5 flex flex-col justify-between p-3 overflow-hidden">
+          <div ref={viewfinderRef} className="w-64 h-44 sm:w-80 sm:h-52 border-2 border-blue-500/70 rounded-2xl relative shadow-[0_0_50px_rgba(59,130,246,0.25)] bg-blue-500/5 flex flex-col justify-between p-3 overflow-hidden">
             {/* Target Corners */}
             <div className="absolute -top-0.5 -left-0.5 w-7 h-7 border-t-4 border-l-4 border-blue-400 rounded-tl-xl shadow-sm" />
             <div className="absolute -top-0.5 -right-0.5 w-7 h-7 border-t-4 border-r-4 border-blue-400 rounded-tr-xl shadow-sm" />

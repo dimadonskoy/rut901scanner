@@ -53,4 +53,17 @@ describe('extractPasswordField', () => {
   it('still skips WIFI PASSWORD even with noise prefix', () => {
     expect(extractPasswordField('. WIFI PASSWORD Dv10CuPa')).toBeNull();
   });
+
+  it('tolerates OCR digit-for-letter confusion in the PASSWORD label', () => {
+    expect(extractPasswordField('PASSW0RD iQ+0?4Ua')).toBe('iQ+0?4Ua');
+    expect(extractPasswordField('PA55WORD iQ+0?4Ua')).toBe('iQ+0?4Ua');
+  });
+
+  it('still skips WIFI PASSWORD when OCR misreads both words', () => {
+    expect(extractPasswordField('W1F1 PA55W0RD Dv10CuPa')).toBeNull();
+  });
+
+  it('keeps the original value characters intact despite label normalization', () => {
+    expect(extractPasswordField('PASSW0RD: 0O1Il5S')).toBe('0O1Il5S');
+  });
 });

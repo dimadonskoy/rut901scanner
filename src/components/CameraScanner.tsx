@@ -17,7 +17,6 @@ export const CameraScanner: React.FC<CameraScannerProps> = ({ onScanResult }) =>
   const codeReaderRef = useRef<BrowserMultiFormatReader | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const viewfinderRef = useRef<HTMLDivElement | null>(null);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [capturing, setCapturing] = useState<boolean>(false);
   const [ocrError, setOcrError] = useState<string | null>(null);
   const [lastRawText, setLastRawText] = useState<string | null>(null);
@@ -434,26 +433,26 @@ export const CameraScanner: React.FC<CameraScannerProps> = ({ onScanResult }) =>
 
       {/* Take Photo — native camera photo is sharper than a video frame grab */}
       <div className="px-4 py-3 bg-slate-950/90 border-t border-slate-800/80">
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/*"
-          capture="environment"
-          onChange={handlePhotoSelected}
-          className="hidden"
-        />
-        <button
-          onClick={() => fileInputRef.current?.click()}
-          disabled={capturing}
+        {/* A real <label> around the input — programmatic .click() on a
+            display:none file input is unreliable on iOS Safari. */}
+        <label
           className={`w-full py-3 rounded-xl flex items-center justify-center gap-2 text-sm font-semibold transition-all min-h-[48px] cursor-pointer ${
             capturing
               ? 'bg-slate-800 text-slate-500 cursor-not-allowed'
               : 'bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white shadow-lg shadow-emerald-900/30'
           }`}
         >
+          <input
+            type="file"
+            accept="image/*"
+            capture="environment"
+            onChange={handlePhotoSelected}
+            disabled={capturing}
+            className="sr-only"
+          />
           <Aperture className={`w-5 h-5 ${capturing ? 'animate-spin' : ''}`} />
           {capturing ? 'Reading photo...' : 'Take Photo of Label (best results)'}
-        </button>
+        </label>
         <p className="text-[10px] text-slate-500 text-center mt-1.5">
           Opens your camera — get close so the label fills the photo
         </p>

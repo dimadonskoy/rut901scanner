@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { BrowserMultiFormatReader, Result } from '@zxing/library';
 import { Camera, RefreshCw, Zap, AlertCircle, Scan } from 'lucide-react';
+import { extractPasswordField } from '../lib/extractPassword';
 
 interface CameraScannerProps {
   onScanResult: (password: string, fullText?: string) => void;
@@ -62,28 +63,14 @@ export const CameraScanner: React.FC<CameraScannerProps> = ({ onScanResult }) =>
     };
   }, []);
 
-  // Extract Teltonika Password from scanned content (1D Barcode, QR code, or Label text)
+  // Extract the PASSWORD field value from decoded barcode/QR text.
   const parseAndReport = React.useCallback((rawText: string) => {
     if (!rawText || rawText.trim().length === 0) return;
 
-    // Teltonika Label Parsing Patterns
-    // Example RUT901 labels often have:
-    // WPA Key / Password: 8-12 alphanumeric characters
-    // Or string format PASS: <password>
-    let extracted = rawText.trim();
-
-    const passMatch = rawText.match(/(?:PASS|PASSWORD|WPA|KEY|PW)[\s:]*([A-Za-z0-9!@#$%^&*]{8,20})/i);
-    if (passMatch && passMatch[1]) {
-      extracted = passMatch[1];
-    } else {
-      // If it's a raw barcode value printed under PASS label
-      const cleanMatch = rawText.match(/\b([A-Za-z0-9]{8,16})\b/);
-      if (cleanMatch) {
-        extracted = cleanMatch[1];
-      }
+    const extracted = extractPasswordField(rawText);
+    if (extracted) {
+      onScanResult(extracted, rawText);
     }
-
-    onScanResult(extracted, rawText);
   }, [onScanResult]);
 
   // Start continuous video decoding

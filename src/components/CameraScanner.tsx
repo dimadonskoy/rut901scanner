@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { BrowserMultiFormatReader, Result } from '@zxing/library';
+import { recognize } from 'tesseract.js';
 import { Camera, RefreshCw, Zap, AlertCircle, Scan } from 'lucide-react';
 import { extractPasswordField } from '../lib/extractPassword';
 
@@ -14,6 +15,9 @@ export const CameraScanner: React.FC<CameraScannerProps> = ({ onScanResult }) =>
   const [error, setError] = useState<string | null>(null);
   const [torchOn, setTorchOn] = useState<boolean>(false);
   const codeReaderRef = useRef<BrowserMultiFormatReader | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const [capturing, setCapturing] = useState<boolean>(false);
+  const [ocrError, setOcrError] = useState<string | null>(null);
 
   // Initialize Code Reader and request camera permissions explicitly
   useEffect(() => {
@@ -72,6 +76,44 @@ export const CameraScanner: React.FC<CameraScannerProps> = ({ onScanResult }) =>
       onScanResult(extracted, rawText);
     }
   }, [onScanResult]);
+
+  // Capture the current video frame and run OCR to read the printed PASSWORD field.
+  const captureAndRecognizePassword = async () => {
+    if (!videoRef.current || !canvasRef.current) return;
+
+    const video = videoRef.current;
+    if (video.readyState < video.HAVE_ENOUGH_DATA || video.videoWidth === 0 || video.videoHeight === 0) {
+      setOcrError('Camera is not ready yet. Please wait a moment and try again.');
+      return;
+    }
+
+    setCapturing(true);
+    setOcrError(null);
+
+    try {
+      const canvas = canvasRef.current;
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('Canvas 2D context unavailable');
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+      const { data } = await recognize(canvas, 'eng');
+      const password = extractPasswordField(data.text);
+
+      if (password) {
+        onScanResult(password, data.text);
+      } else {
+        setOcrError('PASSWORD field not detected — align label and try again.');
+      }
+    } catch (err) {
+      console.error('OCR capture error:', err);
+      setOcrError('Could not read label text. Please try again.');
+    } finally {
+      setCapturing(false);
+    }
+  };
 
   // Start continuous video decoding
   useEffect(() => {
@@ -150,6 +192,20 @@ export const CameraScanner: React.FC<CameraScannerProps> = ({ onScanResult }) =>
             </button>
           )}
           <button
+            onClick={captureAndRecognizePassword}
+            disabled={capturing}
+            className={`px-3 py-2.5 rounded-xl transition-all min-h-[44px] flex items-center justify-center gap-1.5 text-xs font-semibold cursor-pointer ${
+              capturing
+                ? 'bg-slate-700 text-slate-400 cursor-not-allowed'
+                : 'bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white shadow-lg shadow-blue-900/30'
+            }`}
+            title="Capture PASSWORD field"
+            aria-label="Capture PASSWORD field"
+          >
+            <Camera className={`w-4 h-4 ${capturing ? 'animate-spin' : ''}`} />
+            {capturing ? 'Reading...' : 'Capture PASSWORD'}
+          </button>
+          <button
             onClick={toggleTorch}
             className={`p-2.5 rounded-xl transition-all min-w-[44px] min-h-[44px] flex items-center justify-center cursor-pointer ${
               torchOn
@@ -172,6 +228,7 @@ export const CameraScanner: React.FC<CameraScannerProps> = ({ onScanResult }) =>
           playsInline
           muted
         />
+        <canvas ref={canvasRef} className="hidden" />
 
         {/* Viewfinder Target Overlay */}
         <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-center p-6">
@@ -198,6 +255,14 @@ export const CameraScanner: React.FC<CameraScannerProps> = ({ onScanResult }) =>
           <div className="absolute inset-x-4 top-4 p-3 bg-red-950/90 border border-red-700/80 rounded-xl text-red-200 text-xs flex items-center gap-2.5 shadow-xl backdrop-blur-md animate-in fade-in slide-in-from-top-2">
             <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
             <span>{error}</span>
+          </div>
+        )}
+
+        {/* OCR Error Alert */}
+        {ocrError && (
+          <div className="absolute inset-x-4 bottom-4 p-3 bg-red-950/90 border border-red-700/80 rounded-xl text-red-200 text-xs flex items-center gap-2.5 shadow-xl backdrop-blur-md animate-in fade-in slide-in-from-bottom-2">
+            <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
+            <span>{ocrError}</span>
           </div>
         )}
       </div>

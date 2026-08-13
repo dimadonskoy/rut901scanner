@@ -41,4 +41,16 @@ describe('extractPasswordField', () => {
   it('returns null for empty input', () => {
     expect(extractPasswordField('')).toBeNull();
   });
+
+  it('tolerates OCR noise characters before the PASSWORD label', () => {
+    expect(extractPasswordField('| PASSWORD iQ+0?4Ua')).toBe('iQ+0?4Ua');
+  });
+
+  it('finds PASSWORD mid-line after another field', () => {
+    expect(extractPasswordField('USERNAME admin PASSWORD iQ+0?4Ua')).toBe('iQ+0?4Ua');
+  });
+
+  it('still skips WIFI PASSWORD even with noise prefix', () => {
+    expect(extractPasswordField('. WIFI PASSWORD Dv10CuPa')).toBeNull();
+  });
 });

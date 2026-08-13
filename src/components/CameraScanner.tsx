@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { BrowserMultiFormatReader, Result } from '@zxing/library';
 import { recognize } from 'tesseract.js';
-import { Camera, RefreshCw, Zap, AlertCircle, Scan } from 'lucide-react';
+import { Camera, RefreshCw, Zap, AlertCircle, Scan, Eye, Copy } from 'lucide-react';
 import { extractPasswordField } from '../lib/extractPassword';
 
 interface CameraScannerProps {
@@ -18,6 +18,8 @@ export const CameraScanner: React.FC<CameraScannerProps> = ({ onScanResult }) =>
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [capturing, setCapturing] = useState<boolean>(false);
   const [ocrError, setOcrError] = useState<string | null>(null);
+  const [lastRawText, setLastRawText] = useState<string | null>(null);
+  const [showRawText, setShowRawText] = useState<boolean>(false);
 
   // Initialize Code Reader and request camera permissions explicitly
   useEffect(() => {
@@ -74,6 +76,8 @@ export const CameraScanner: React.FC<CameraScannerProps> = ({ onScanResult }) =>
     const extracted = extractPasswordField(rawText);
     if (extracted) {
       onScanResult(extracted, rawText);
+    } else {
+      setLastRawText(rawText);
     }
   }, [onScanResult]);
 
@@ -106,6 +110,7 @@ export const CameraScanner: React.FC<CameraScannerProps> = ({ onScanResult }) =>
         onScanResult(password, data.text);
       } else {
         setOcrError('PASSWORD field not detected — align label and try again.');
+        setLastRawText(data.text);
       }
     } catch (err) {
       console.error('OCR capture error:', err);
@@ -266,6 +271,55 @@ export const CameraScanner: React.FC<CameraScannerProps> = ({ onScanResult }) =>
           </div>
         )}
       </div>
+
+      {/* Raw Scanned Text Panel — shown when text was read but no PASSWORD field matched */}
+      {lastRawText && (
+        <div className="bg-slate-950/90 border-t border-slate-800/80 px-4 py-3 space-y-2">
+          <button
+            onClick={() => setShowRawText((v) => !v)}
+            className="w-full flex items-center justify-between text-xs font-medium text-amber-300 hover:text-amber-200 transition-colors cursor-pointer min-h-[44px]"
+          >
+            <span className="flex items-center gap-2">
+              <Eye className="w-4 h-4" />
+              Text was scanned but no PASSWORD field found — view it
+            </span>
+            <span className="text-slate-500">{showRawText ? 'Hide' : 'Show'}</span>
+          </button>
+
+          {showRawText && (
+            <div className="space-y-2">
+              <p className="text-[10px] text-slate-500">
+                Tap a word below to use it as the password:
+              </p>
+              <div className="bg-slate-900 border border-slate-800 rounded-xl p-3 max-h-40 overflow-y-auto space-y-1">
+                {lastRawText.split(/\r?\n/).filter((line) => line.trim()).map((line, i) => (
+                  <div key={i} className="flex flex-wrap gap-1.5">
+                    {line.trim().split(/\s+/).map((word, j) => (
+                      <button
+                        key={j}
+                        onClick={() => onScanResult(word, lastRawText)}
+                        className="px-2 py-1 rounded-lg bg-slate-800 hover:bg-blue-600 active:bg-blue-700 text-slate-200 hover:text-white font-mono text-xs transition-colors cursor-pointer"
+                        title="Use as password"
+                      >
+                        {word}
+                      </button>
+                    ))}
+                  </div>
+                ))}
+              </div>
+              <div className="flex justify-end">
+                <button
+                  onClick={() => navigator.clipboard.writeText(lastRawText)}
+                  className="flex items-center gap-1.5 text-[11px] text-slate-400 hover:text-slate-200 transition-colors cursor-pointer px-2 py-1"
+                >
+                  <Copy className="w-3.5 h-3.5" />
+                  Copy all text
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Footer Info */}
       <div className="p-3 bg-slate-950/90 text-center border-t border-slate-800/80">

@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { BrowserMultiFormatReader, Result } from '@zxing/library';
 import { recognize } from 'tesseract.js';
-import { Camera, RefreshCw, Zap, AlertCircle, Scan, Eye, Copy } from 'lucide-react';
+import { Camera, RefreshCw, Zap, AlertCircle, Scan, Eye, Copy, Aperture } from 'lucide-react';
 import { extractPasswordField } from '../lib/extractPassword';
 
 interface CameraScannerProps {
@@ -17,6 +17,7 @@ export const CameraScanner: React.FC<CameraScannerProps> = ({ onScanResult }) =>
   const codeReaderRef = useRef<BrowserMultiFormatReader | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const viewfinderRef = useRef<HTMLDivElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [capturing, setCapturing] = useState<boolean>(false);
   const [ocrError, setOcrError] = useState<string | null>(null);
   const [lastRawText, setLastRawText] = useState<string | null>(null);
@@ -115,7 +116,12 @@ export const CameraScanner: React.FC<CameraScannerProps> = ({ onScanResult }) =>
 
   // Grayscale the frame, invert it when the background is dark (labels print
   // white-on-black, but Tesseract expects dark-on-light), and stretch contrast.
-  const preprocessForOcr = (ctx: CanvasRenderingContext2D, width: number, height: number) => {
+  const preprocessForOcr = (
+    ctx: CanvasRenderingContext2D,
+    width: number,
+    height: number,
+    invertMode: 'auto' | 'never' | 'always' = 'auto'
+  ) => {
     const imageData = ctx.getImageData(0, 0, width, height);
     const px = imageData.data;
 
@@ -127,7 +133,7 @@ export const CameraScanner: React.FC<CameraScannerProps> = ({ onScanResult }) =>
       sum += g;
     }
 
-    const invert = sum / gray.length < 128;
+    const invert = invertMode === 'always' || (invertMode === 'auto' && sum / gray.length < 128);
 
     let min = 255;
     let max = 0;
@@ -198,6 +204,80 @@ export const CameraScanner: React.FC<CameraScannerProps> = ({ onScanResult }) =>
     } finally {
       setCapturing(false);
     }
+  };
+
+  // Load a photo file into an <img>, which honors EXIF orientation on iOS.
+  const loadPhoto = (file: File) =>
+    new Promise<HTMLImageElement>((resolve, reject) => {
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = () => {
+        URL.revokeObjectURL(url);
+        reject(new Error('Could not load photo'));
+      };
+      img.src = url;
+    });
+
+  // OCR a photo taken with the native camera app — sharp, autofocused, and
+  // full resolution, which is far more reliable than a live video frame.
+  // Runs two passes (normal + inverted) since the label prints white-on-black.
+  const handlePhotoSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file || !canvasRef.current) return;
+
+    setCapturing(true);
+    setOcrError(null);
+
+    try {
+      const img = await loadPhoto(file);
+      const canvas = canvasRef.current;
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+      if (!ctx) throw new Error('Canvas 2D context unavailable');
+
+      const maxDim = 2200;
+      const scale = Math.min(1, maxDim / Math.max(img.naturalWidth, img.naturalHeight));
+      canvas.width = Math.round(img.naturalWidth * scale);
+      canvas.height = Math.round(img.naturalHeight * scale);
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+
+      const texts: string[] = [];
+      for (const invertMode of ['never', 'always'] as const) {
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        preprocessForOcr(ctx, canvas.width, canvas.height, invertMode);
+
+        const { data } = await recognize(canvas, 'eng');
+        const password = extractPasswordField(data.text);
+        if (password) {
+          URL.revokeObjectURL(img.src);
+          onScanResult(password, data.text);
+          return;
+        }
+        texts.push(data.text);
+      }
+
+      URL.revokeObjectURL(img.src);
+      setOcrError('PASSWORD not found automatically — tap the password word below, or retake closer.');
+      setLastRawText(texts.join('\n'));
+      setShowRawText(true);
+    } catch (err) {
+      console.error('Photo OCR error:', err);
+      setOcrError('Could not read the photo. Please try again.');
+    } finally {
+      setCapturing(false);
+    }
+  };
+
+  // Heuristic: router passwords mix letters with digits/symbols and are 6+
+  // chars — used only to highlight likely candidates in the word picker.
+  const isLikelyPassword = (word: string) => {
+    if (word.length < 6 || word.length > 24) return false;
+    if (/^(PASSWORD|USERNAME|SERIAL|BATCH|IMEI|MAC|WIFI|SSID)$/i.test(word)) return false;
+    const hasLetter = /[a-zA-Z]/.test(word);
+    const hasDigitOrSymbol = /[0-9!@#$%^&*+?=~._-]/.test(word);
+    return hasLetter && hasDigitOrSymbol;
   };
 
   // Start continuous video decoding
@@ -352,6 +432,33 @@ export const CameraScanner: React.FC<CameraScannerProps> = ({ onScanResult }) =>
         )}
       </div>
 
+      {/* Take Photo — native camera photo is sharper than a video frame grab */}
+      <div className="px-4 py-3 bg-slate-950/90 border-t border-slate-800/80">
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          onChange={handlePhotoSelected}
+          className="hidden"
+        />
+        <button
+          onClick={() => fileInputRef.current?.click()}
+          disabled={capturing}
+          className={`w-full py-3 rounded-xl flex items-center justify-center gap-2 text-sm font-semibold transition-all min-h-[48px] cursor-pointer ${
+            capturing
+              ? 'bg-slate-800 text-slate-500 cursor-not-allowed'
+              : 'bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white shadow-lg shadow-emerald-900/30'
+          }`}
+        >
+          <Aperture className={`w-5 h-5 ${capturing ? 'animate-spin' : ''}`} />
+          {capturing ? 'Reading photo...' : 'Take Photo of Label (best results)'}
+        </button>
+        <p className="text-[10px] text-slate-500 text-center mt-1.5">
+          Opens your camera — get close so the label fills the photo
+        </p>
+      </div>
+
       {/* Raw Scanned Text Panel — shown when text was read but no PASSWORD field matched */}
       {lastRawText && (
         <div className="bg-slate-950/90 border-t border-slate-800/80 px-4 py-3 space-y-2">
@@ -368,8 +475,32 @@ export const CameraScanner: React.FC<CameraScannerProps> = ({ onScanResult }) =>
 
           {showRawText && (
             <div className="space-y-2">
+              {(() => {
+                const candidates = [...new Set(
+                  lastRawText.split(/\s+/).filter((w) => w && isLikelyPassword(w))
+                )];
+                return candidates.length > 0 ? (
+                  <div className="space-y-1.5">
+                    <p className="text-[10px] text-emerald-400 font-semibold uppercase tracking-wide">
+                      Likely passwords — tap to use:
+                    </p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {candidates.map((word, i) => (
+                        <button
+                          key={i}
+                          onClick={() => onScanResult(word, lastRawText)}
+                          className="px-3 py-1.5 rounded-lg bg-emerald-600/20 border border-emerald-500/50 hover:bg-emerald-600 active:bg-emerald-700 text-emerald-300 hover:text-white font-mono text-sm font-bold transition-colors cursor-pointer"
+                          title="Use as password"
+                        >
+                          {word}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : null;
+              })()}
               <p className="text-[10px] text-slate-500">
-                Tap a word below to use it as the password:
+                Or tap any word below to use it as the password:
               </p>
               <div className="bg-slate-900 border border-slate-800 rounded-xl p-3 max-h-40 overflow-y-auto space-y-1">
                 {lastRawText.split(/\r?\n/).filter((line) => line.trim()).map((line, i) => (
